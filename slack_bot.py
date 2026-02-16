@@ -347,7 +347,9 @@ def handle_mention(event, say):
     thinking = say(text=":hourglass_flowing_sand: Looking into that...", channel=channel)
 
     try:
+        print(f"[DEBUG] Calling Claude API...")
         response = ask_claude(user_message)
+        print(f"[DEBUG] Got response, length={len(response)}")
 
         # Update the thinking message with the actual response
         app.client.chat_update(
@@ -355,13 +357,19 @@ def handle_mention(event, say):
             ts=thinking["ts"],
             text=response,
         )
+        print(f"[DEBUG] Slack message updated successfully")
     except Exception as e:
-        logger.error(f"Error processing message: {e}", exc_info=True)
-        app.client.chat_update(
-            channel=channel,
-            ts=thinking["ts"],
-            text=f":x: Sorry, I ran into an error: {e}",
-        )
+        print(f"[ERROR] {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            app.client.chat_update(
+                channel=channel,
+                ts=thinking["ts"],
+                text=f":x: Sorry, I ran into an error: {e}",
+            )
+        except Exception:
+            pass
 
 
 @app.event("message")
@@ -382,26 +390,34 @@ def handle_direct_message(event, say):
     if not user_message:
         return
 
-    logger.info(f"DM from <@{user_id}>: {user_message}")
+    print(f"[DEBUG] DM from {user_id}: {user_message}")
 
     # Send a "thinking" message
     thinking = say(text=":hourglass_flowing_sand: Looking into that...", channel=channel)
 
     try:
+        print(f"[DEBUG] Calling Claude API...")
         response = ask_claude(user_message)
+        print(f"[DEBUG] Got response, length={len(response)}")
 
         app.client.chat_update(
             channel=channel,
             ts=thinking["ts"],
             text=response,
         )
+        print(f"[DEBUG] Slack message updated successfully")
     except Exception as e:
-        logger.error(f"Error processing DM: {e}", exc_info=True)
-        app.client.chat_update(
-            channel=channel,
-            ts=thinking["ts"],
-            text=f":x: Sorry, I ran into an error: {e}",
-        )
+        print(f"[ERROR] {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            app.client.chat_update(
+                channel=channel,
+                ts=thinking["ts"],
+                text=f":x: Sorry, I ran into an error: {e}",
+            )
+        except Exception:
+            pass
 
 
 # ── Main ───────────────────────────────────────────────────────────
