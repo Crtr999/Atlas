@@ -7,9 +7,13 @@ Used by the Slack bot to answer questions and make edits.
 
 import pandas as pd
 import json
+import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+logger = logging.getLogger("atlas-bot")
 
 
 class AtlasDataReader:
@@ -392,6 +396,65 @@ class AtlasDataReader:
                 data.to_excel(writer, sheet_name=name, index=False)
 
         self.reload()
+        self._git_commit_and_push(f"Update {sheet_name} sheet via CarterBot")
+
+    def _git_commit_and_push(self, commit_message: str):
+        """Stage the Excel file, commit, and push to GitHub with retry."""
+        repo_dir = str(self.excel_path.parent)
+        excel_filename = self.excel_path.name
+
+        try:
+            # Stage the changed Excel file
+            subprocess.run(
+                ["git", "add", excel_filename],
+                cwd=repo_dir, capture_output=True, text=True, check=True,
+            )
+
+            # Also stage the HTML file if it was regenerated
+            html_path = self.excel_path.parent / "CBCAssistant_Complete.html"
+            if html_path.exists():
+                subprocess.run(
+                    ["git", "add", html_path.name],
+                    cwd=repo_dir, capture_output=True, text=True,
+                )
+
+            # Check if there is anything to commit
+            status = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=repo_dir, capture_output=True, text=True,
+            )
+            if status.returncode == 0:
+                logger.info("Git: no staged changes to commit")
+                return
+
+            # Commit
+            subprocess.run(
+                ["git", "commit", "-m", commit_message],
+                cwd=repo_dir, capture_output=True, text=True, check=True,
+            )
+            logger.info(f"Git: committed - {commit_message}")
+
+            # Push with retry (exponential backoff)
+            for attempt, wait in enumerate([0, 2, 4, 8, 16], start=1):
+                if wait:
+                    time.sleep(wait)
+                push_result = subprocess.run(
+                    ["git", "push"],
+                    cwd=repo_dir, capture_output=True, text=True,
+                )
+                if push_result.returncode == 0:
+                    logger.info(f"Git: pushed to remote (attempt {attempt})")
+                    return
+                logger.warning(
+                    f"Git push attempt {attempt} failed: {push_result.stderr.strip()}"
+                )
+
+            logger.error("Git: push failed after all retries")
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Git error: {e.stderr.strip() if e.stderr else e}")
+        except Exception as e:
+            logger.error(f"Git commit/push error: {e}")
 
     # ── HTML regeneration ──────────────────────────────────────────
 
@@ -410,6 +473,7 @@ class AtlasDataReader:
                 timeout=60,
             )
             if result.returncode == 0:
+                self._git_commit_and_push("Regenerate HTML via CarterBot")
                 return "HTML regenerated successfully.\n" + result.stdout[-500:]
             else:
                 return f"HTML generation failed:\n{result.stderr[-500:]}"
