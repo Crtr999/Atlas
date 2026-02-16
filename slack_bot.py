@@ -281,7 +281,7 @@ def ask_claude(user_message: str) -> str:
     max_iterations = 10
     for _ in range(max_iterations):
         response = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-5-20250929",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
