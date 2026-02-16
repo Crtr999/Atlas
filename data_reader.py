@@ -404,6 +404,16 @@ class AtlasDataReader:
         excel_filename = self.excel_path.name
 
         try:
+            # Ensure git identity is configured for CarterBot
+            subprocess.run(
+                ["git", "config", "user.name", "CarterBot"],
+                cwd=repo_dir, capture_output=True, text=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "carterbot@cbc-atlas.local"],
+                cwd=repo_dir, capture_output=True, text=True,
+            )
+
             # Stage the changed Excel file
             subprocess.run(
                 ["git", "add", excel_filename],
