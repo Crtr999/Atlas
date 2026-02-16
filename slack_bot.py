@@ -322,34 +322,29 @@ def ask_claude(user_message: str) -> str:
 @app.event("app_mention")
 def handle_mention(event, say):
     """Handle @Claude mentions in channels."""
-    user_message = event.get("text", "")
-    user_id = event.get("user", "")
-    channel = event.get("channel", "")
-
-    # Strip the bot mention from the message
-    user_message = re.sub(r"<@[A-Z0-9]+>", "", user_message).strip()
-
-    if not user_message:
-        say(
-            text="Hi! Ask me anything about the CBC Settlement Funding data. "
-                 "For example:\n"
-                 "- *What are the redaction levels in Ramsey, MN?*\n"
-                 "- *Give me feedback on our court process in Minnesota*\n"
-                 "- *Add a new case for John Doe in Hennepin County, MN*\n"
-                 "- *Regenerate the HTML*",
-            channel=channel,
-        )
-        return
-
-    logger.info(f"Message from <@{user_id}>: {user_message}")
-
-    # Send a "thinking" message
-    thinking = say(text=":hourglass_flowing_sand: Looking into that...", channel=channel)
-
+    import traceback
     try:
-        print(f"[DEBUG] Calling Claude API...")
+        user_message = event.get("text", "")
+        user_id = event.get("user", "")
+        channel = event.get("channel", "")
+        print(f"[BOT] Got mention from {user_id} in {channel}")
+
+        # Strip the bot mention from the message
+        user_message = re.sub(r"<@[A-Z0-9]+>", "", user_message).strip()
+        print(f"[BOT] Message: {user_message}")
+
+        if not user_message:
+            say(text="Hi! Ask me anything about the CBC Settlement Funding data.", channel=channel)
+            return
+
+        # Send a "thinking" message
+        print("[BOT] Sending thinking message...")
+        thinking = say(text="Looking into that...", channel=channel)
+        print(f"[BOT] Thinking message sent, ts={thinking.get('ts', 'unknown')}")
+
+        print("[BOT] Calling Claude API...")
         response = ask_claude(user_message)
-        print(f"[DEBUG] Got response, length={len(response)}")
+        print(f"[BOT] Got response ({len(response)} chars)")
 
         # Update the thinking message with the actual response
         app.client.chat_update(
@@ -357,24 +352,16 @@ def handle_mention(event, say):
             ts=thinking["ts"],
             text=response,
         )
-        print(f"[DEBUG] Slack message updated successfully")
+        print("[BOT] Response sent to Slack!")
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        import traceback
         traceback.print_exc()
-        try:
-            app.client.chat_update(
-                channel=channel,
-                ts=thinking["ts"],
-                text=f":x: Sorry, I ran into an error: {e}",
-            )
-        except Exception:
-            pass
 
 
 @app.event("message")
 def handle_direct_message(event, say):
     """Handle direct messages to the bot."""
+    import traceback
     # Skip bot messages, message_changed events, etc.
     if event.get("subtype"):
         return
@@ -383,41 +370,33 @@ def handle_direct_message(event, say):
     if event.get("channel_type") != "im":
         return
 
-    user_message = event.get("text", "").strip()
-    user_id = event.get("user", "")
-    channel = event.get("channel", "")
-
-    if not user_message:
-        return
-
-    print(f"[DEBUG] DM from {user_id}: {user_message}")
-
-    # Send a "thinking" message
-    thinking = say(text=":hourglass_flowing_sand: Looking into that...", channel=channel)
-
     try:
-        print(f"[DEBUG] Calling Claude API...")
+        user_message = event.get("text", "").strip()
+        user_id = event.get("user", "")
+        channel = event.get("channel", "")
+
+        if not user_message:
+            return
+
+        print(f"[BOT] DM from {user_id}: {user_message}")
+
+        print("[BOT] Sending thinking message...")
+        thinking = say(text="Looking into that...", channel=channel)
+        print(f"[BOT] Thinking message sent")
+
+        print("[BOT] Calling Claude API...")
         response = ask_claude(user_message)
-        print(f"[DEBUG] Got response, length={len(response)}")
+        print(f"[BOT] Got response ({len(response)} chars)")
 
         app.client.chat_update(
             channel=channel,
             ts=thinking["ts"],
             text=response,
         )
-        print(f"[DEBUG] Slack message updated successfully")
+        print("[BOT] Response sent to Slack!")
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        import traceback
         traceback.print_exc()
-        try:
-            app.client.chat_update(
-                channel=channel,
-                ts=thinking["ts"],
-                text=f":x: Sorry, I ran into an error: {e}",
-            )
-        except Exception:
-            pass
 
 
 # ── Main ───────────────────────────────────────────────────────────
