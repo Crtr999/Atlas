@@ -7,6 +7,7 @@ A Slack bot powered by Claude that can:
   - Edit the Excel workbook (add cases, update notes, etc.)
   - Save and retrieve institutional knowledge (judge patterns, court tips, etc.)
   - Run analytical queries and risk scores over the case history
+  - Generate and upload a formatted Excel executive report to Slack
   - Regenerate the HTML application
 
 Usage:
@@ -27,6 +28,7 @@ import logging
 import os
 import re
 import traceback
+from pathlib import Path
 
 from dotenv import load_dotenv
 from slack_bolt import App
@@ -35,6 +37,7 @@ import anthropic
 
 from analytics import AtlasAnalytics
 from data_reader import AtlasDataReader
+from generate_executive_report import generate_report as _generate_report
 from knowledge_store import KnowledgeStore
 
 # ── Setup ──────────────────────────────────────────────────────────
@@ -58,6 +61,11 @@ if not ANTHROPIC_API_KEY:
 
 app = App(token=SLACK_BOT_TOKEN)
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+# Holds the Slack channel ID for the message currently being processed.
+# Set by event handlers before calling ask_claude() so the report tool
+# can upload the file to the right place.
+_current_channel: str = ""
 data_reader = AtlasDataReader(EXCEL_PATH)
 knowledge_store = KnowledgeStore(repo_dir=".")
 analytics = AtlasAnalytics(data_reader)
@@ -356,6 +364,23 @@ TOOLS = [
         },
     },
 
+    # ── Report tool ─────────────────────────────────────────────────
+    {
+        "name": "generate_executive_report",
+        "description": (
+            "Generate a formatted Excel executive report and upload it to Slack. "
+            "The report has four sheets: Executive Summary (KPIs, hotspots), "
+            "Full Dataset (all cases colour-coded), Denial Hotspots (counties and "
+            "judges ranked by denial rate), and State Breakdown. "
+            "Use when the user asks for 'executive report', 'snapshot', 'Excel export', "
+            "'upload the data', or similar."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+
     # ── Analytics tools ─────────────────────────────────────────────
     {
         "name": "get_risk_score",
@@ -539,6 +564,43 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
             )
             return header + KnowledgeStore.format_for_slack(items)
 
+        # --- Report tool ---
+        elif tool_name == "generate_executive_report":
+            try:
+                report_path = _generate_report(
+                    excel_path=EXCEL_PATH,
+                    output_dir="./reports",
+                )
+                filename = Path(report_path).name
+
+                if _current_channel:
+                    # Upload the file directly to the Slack channel
+                    with open(report_path, "rb") as f:
+                        app.client.files_upload(
+                            channels=_current_channel,
+                            file=f,
+                            filename=filename,
+                            title="CBC Executive Report",
+                            initial_comment=(
+                                f"*CBC Executive Report* — {filename}\n"
+                                "Four sheets: Executive Summary · Full Dataset · "
+                                "Denial Hotspots · State Breakdown"
+                            ),
+                        )
+                    return (
+                        f"Executive report generated and uploaded to this channel.\n"
+                        f"File: {filename}\n"
+                        "Sheets: Executive Summary, Full Dataset, Denial Hotspots, State Breakdown"
+                    )
+                else:
+                    return (
+                        f"Report generated: {report_path}\n"
+                        "(Slack channel unavailable for upload — share the file manually.)"
+                    )
+            except Exception as e:
+                logger.error(f"Report generation error: {e}", exc_info=True)
+                return f"Error generating report: {e}"
+
         # --- Analytics tools ---
         elif tool_name == "get_risk_score":
             return analytics.get_risk_score(
@@ -593,6 +655,7 @@ lessons learned from past cases
 - Answer questions about court data, redaction levels, state rules, and more
 - Save and retrieve team knowledge when people share insights or ask what we know
 - Run risk assessments and analytical queries over case history
+- Generate and upload an Excel executive report to Slack (4 formatted sheets)
 - Edit the Excel file (add cases, update notes, change redaction levels, update statuses)
 - Regenerate the HTML application after edits
 
@@ -695,10 +758,12 @@ def _get_user_display_name(user_id: str) -> str:
 @app.event("app_mention")
 def handle_mention(event, say):
     """Handle @Atlas mentions in channels."""
+    global _current_channel
     try:
         user_message = event.get("text", "")
         user_id = event.get("user", "")
         channel = event.get("channel", "")
+        _current_channel = channel
         print(f"[BOT] Mention from {user_id} in {channel}")
 
         # Strip the bot mention tag from the message text
@@ -739,6 +804,7 @@ def handle_mention(event, say):
 @app.event("message")
 def handle_direct_message(event, say):
     """Handle direct messages to the bot."""
+    global _current_channel
     # Ignore bot messages, edits, and anything in public channels
     if event.get("subtype"):
         return
@@ -749,6 +815,7 @@ def handle_direct_message(event, say):
         user_message = event.get("text", "").strip()
         user_id = event.get("user", "")
         channel = event.get("channel", "")
+        _current_channel = channel
 
         if not user_message:
             return
