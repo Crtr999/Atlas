@@ -176,6 +176,39 @@ class Database:
                     skipped += 1
         return {"added": added, "skipped": skipped}
 
+    def import_prospects_xlsx(self, xlsx_path: str, sheet_name: str = None) -> dict:
+        """Import prospects from an Excel (.xlsx) file. Returns counts."""
+        import pandas as pd
+        added = 0
+        skipped = 0
+
+        df = pd.read_excel(xlsx_path, sheet_name=sheet_name or 0, engine="openpyxl")
+        # Normalize column names: strip whitespace, lowercase, replace spaces with underscores
+        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+
+        for _, row in df.iterrows():
+            email = str(row.get("email", "")).strip()
+            if not email or email == "nan":
+                skipped += 1
+                continue
+            pid = self.add_prospect(
+                email=email,
+                first_name=str(row.get("first_name", "") or "").strip(),
+                last_name=str(row.get("last_name", "") or "").strip(),
+                company=str(row.get("company", "") or "").strip(),
+                phone=str(row.get("phone", "") or "").strip(),
+                note_type=str(row.get("note_type", "") or "").strip(),
+                note_balance=str(row.get("note_balance", "") or "").strip(),
+                property_state=str(row.get("property_state", "") or row.get("state", "") or "").strip(),
+                source=str(row.get("source", "") or "").strip(),
+                tags=str(row.get("tags", "") or "").strip(),
+            )
+            if pid:
+                added += 1
+            else:
+                skipped += 1
+        return {"added": added, "skipped": skipped}
+
     def get_unsent_prospects(self, campaign_id: int, limit: int = 500) -> list:
         """Get prospects who haven't been emailed for a given campaign."""
         with self._connect() as conn:
@@ -436,6 +469,131 @@ class Database:
 
     def get_remaining_sends_today(self) -> int:
         return max(0, self.get_daily_limit() - self.get_today_send_count())
+
+    # ── Excel Export ────────────────────────────────────────────────
+
+    def export_report_xlsx(self, output_path: str) -> str:
+        """Export a multi-sheet Excel report with prospects, emails, conversations, and analytics."""
+        import pandas as pd
+        from datetime import datetime
+
+        with self._connect() as conn:
+            # Sheet 1: Prospects
+            prospects_df = pd.read_sql_query(
+                "SELECT id, email, first_name, last_name, company, phone, "
+                "note_type, note_balance, property_state, source, tags, status, "
+                "created_at, updated_at FROM prospects ORDER BY created_at DESC",
+                conn,
+            )
+
+            # Sheet 2: Emails Sent
+            sent_df = pd.read_sql_query(
+                """SELECT es.id, p.email as prospect_email,
+                   p.first_name || ' ' || p.last_name as prospect_name,
+                   es.subject, es.body, es.sent_at,
+                   CASE WHEN es.is_auto_reply = 1 THEN 'Auto-Reply' ELSE 'Campaign' END as type,
+                   c.name as campaign_name
+                   FROM emails_sent es
+                   JOIN prospects p ON es.prospect_id = p.id
+                   LEFT JOIN campaigns c ON es.campaign_id = c.id
+                   ORDER BY es.sent_at DESC""",
+                conn,
+            )
+
+            # Sheet 3: Emails Received
+            received_df = pd.read_sql_query(
+                """SELECT er.id, er.from_email,
+                   p.first_name || ' ' || p.last_name as prospect_name,
+                   er.subject, er.body, er.received_at,
+                   CASE WHEN er.processed = 1 THEN 'Yes' ELSE 'No' END as processed
+                   FROM emails_received er
+                   LEFT JOIN prospects p ON er.prospect_id = p.id
+                   ORDER BY er.received_at DESC""",
+                conn,
+            )
+
+            # Sheet 4: Conversations
+            conv_df = pd.read_sql_query(
+                """SELECT p.email, p.first_name || ' ' || p.last_name as name,
+                   p.company, p.status as prospect_status,
+                   cv.status as conversation_status, cv.ai_summary,
+                   cv.reply_count, cv.last_activity, cv.created_at
+                   FROM conversations cv
+                   JOIN prospects p ON cv.prospect_id = p.id
+                   ORDER BY cv.last_activity DESC""",
+                conn,
+            )
+
+            # Sheet 5: Analytics Summary
+            stats = self.get_stats()
+            analytics_data = {
+                "Metric": [
+                    "Total Prospects",
+                    "Outreach Emails Sent",
+                    "Replies Received",
+                    "Auto-Replies Sent",
+                    "Reply Rate (%)",
+                    "Today's Sends",
+                    "Today's Limit",
+                    "Remaining Today",
+                    "Report Generated",
+                ],
+                "Value": [
+                    stats["total_prospects"],
+                    stats["total_outreach_sent"],
+                    stats["total_replies_received"],
+                    stats["auto_replies_sent"],
+                    round(
+                        (stats["total_replies_received"] / stats["total_outreach_sent"] * 100)
+                        if stats["total_outreach_sent"] > 0 else 0,
+                        1,
+                    ),
+                    stats["today_sent"],
+                    stats["today_limit"],
+                    stats["today_remaining"],
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                ],
+            }
+            analytics_df = pd.DataFrame(analytics_data)
+
+            # Prospect status breakdown
+            status_data = {
+                "Status": list(stats.get("prospects_by_status", {}).keys()),
+                "Count": list(stats.get("prospects_by_status", {}).values()),
+            }
+            status_df = pd.DataFrame(status_data)
+
+            # Conversation status breakdown
+            conv_status_data = {
+                "Conversation Status": list(stats.get("conversations_by_status", {}).keys()),
+                "Count": list(stats.get("conversations_by_status", {}).values()),
+            }
+            conv_status_df = pd.DataFrame(conv_status_data)
+
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            analytics_df.to_excel(writer, sheet_name="Analytics", index=False)
+            status_df.to_excel(writer, sheet_name="Analytics", index=False, startrow=len(analytics_df) + 3)
+            conv_status_df.to_excel(
+                writer, sheet_name="Analytics", index=False,
+                startrow=len(analytics_df) + len(status_df) + 6,
+            )
+            prospects_df.to_excel(writer, sheet_name="Prospects", index=False)
+            sent_df.to_excel(writer, sheet_name="Emails Sent", index=False)
+            received_df.to_excel(writer, sheet_name="Replies Received", index=False)
+            conv_df.to_excel(writer, sheet_name="Conversations", index=False)
+
+            # Auto-fit column widths
+            for sheet_name in writer.sheets:
+                ws = writer.sheets[sheet_name]
+                for col in ws.columns:
+                    max_len = 0
+                    col_letter = col[0].column_letter
+                    for cell in col:
+                        val = str(cell.value) if cell.value else ""
+                        max_len = max(max_len, min(len(val), 50))
+                    ws.column_dimensions[col_letter].width = max_len + 3
+
+        return output_path
 
     # ── Stats ─────────────────────────────────────────────────────
 

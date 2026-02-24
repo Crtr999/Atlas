@@ -8,6 +8,8 @@ Usage:
 Commands:
     setup           Validate configuration and initialize database
     import-csv      Import prospects from a CSV file
+    import-xlsx     Import prospects from an Excel (.xlsx) file
+    export-report   Export analytics report to Excel (.xlsx)
     add-prospect    Add a single prospect
     list-prospects  List all prospects (optionally filtered by status)
     campaigns       List available campaigns/templates
@@ -75,6 +77,33 @@ def cmd_import_csv(args):
     result = db.import_prospects_csv(args.file)
     print(f"  Added: {result['added']}")
     print(f"  Skipped (duplicate/invalid): {result['skipped']}")
+    return 0
+
+
+def cmd_import_xlsx(args):
+    """Import prospects from an Excel file."""
+    db = Database()
+    print(f"Importing prospects from {args.file}...")
+    result = db.import_prospects_xlsx(args.file, sheet_name=args.sheet)
+    print(f"  Added: {result['added']}")
+    print(f"  Skipped (duplicate/invalid): {result['skipped']}")
+    return 0
+
+
+def cmd_export_report(args):
+    """Export campaign report to an Excel file."""
+    from datetime import datetime
+    db = Database()
+    output = args.output or f"deed_street_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    print(f"Generating report...")
+    db.export_report_xlsx(output)
+    print(f"Report exported to: {output}")
+    print("Sheets included:")
+    print("  1. Analytics    — summary metrics, reply rate, status breakdowns")
+    print("  2. Prospects    — full contact list with statuses")
+    print("  3. Emails Sent  — every outbound email (campaigns + auto-replies)")
+    print("  4. Replies Received — all inbound replies")
+    print("  5. Conversations — per-prospect thread summaries with AI notes")
     return 0
 
 
@@ -274,6 +303,15 @@ def main():
     p_import = subparsers.add_parser("import-csv", help="Import prospects from CSV")
     p_import.add_argument("file", help="Path to CSV file")
 
+    # import-xlsx
+    p_xlsx = subparsers.add_parser("import-xlsx", help="Import prospects from Excel (.xlsx)")
+    p_xlsx.add_argument("file", help="Path to .xlsx file")
+    p_xlsx.add_argument("--sheet", default=None, help="Sheet name (default: first sheet)")
+
+    # export-report
+    p_export = subparsers.add_parser("export-report", help="Export report to Excel (.xlsx)")
+    p_export.add_argument("-o", "--output", help="Output file path (default: auto-generated)")
+
     # add-prospect
     p_add = subparsers.add_parser("add-prospect", help="Add a single prospect")
     p_add.add_argument("email", help="Prospect email address")
@@ -327,6 +365,8 @@ def main():
     commands = {
         "setup": cmd_setup,
         "import-csv": cmd_import_csv,
+        "import-xlsx": cmd_import_xlsx,
+        "export-report": cmd_export_report,
         "add-prospect": cmd_add_prospect,
         "list-prospects": cmd_list_prospects,
         "campaigns": cmd_campaigns,
