@@ -4,6 +4,8 @@ Each template is designed for a specific outreach scenario.
 Templates use {{variable}} syntax for personalization.
 """
 
+from typing import Optional
+
 # ── Initial Outreach Templates ────────────────────────────────────
 
 INITIAL_OUTREACH_V1 = {
@@ -117,7 +119,7 @@ ALL_TEMPLATES = {
 }
 
 
-def get_template(name: str) -> dict | None:
+def get_template(name: str) -> Optional[dict]:
     """Get a template by name."""
     return ALL_TEMPLATES.get(name)
 

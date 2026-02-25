@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, date
 from pathlib import Path
 from contextlib import contextmanager
+from typing import Optional
 
 from . import config
 
@@ -225,7 +226,7 @@ class Database:
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get_prospect_by_email(self, email: str) -> dict | None:
+    def get_prospect_by_email(self, email: str) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM prospects WHERE email = ?",
@@ -233,7 +234,7 @@ class Database:
             ).fetchone()
             return dict(row) if row else None
 
-    def get_prospect_by_id(self, prospect_id: int) -> dict | None:
+    def get_prospect_by_id(self, prospect_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM prospects WHERE id = ?", (prospect_id,)
@@ -272,14 +273,14 @@ class Database:
             )
             return cursor.lastrowid
 
-    def get_campaign(self, campaign_id: int) -> dict | None:
+    def get_campaign(self, campaign_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM campaigns WHERE id = ?", (campaign_id,)
             ).fetchone()
             return dict(row) if row else None
 
-    def get_campaign_by_name(self, name: str) -> dict | None:
+    def get_campaign_by_name(self, name: str) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM campaigns WHERE name = ?", (name,)
@@ -317,7 +318,7 @@ class Database:
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get_sent_email_by_message_id(self, message_id: str) -> dict | None:
+    def get_sent_email_by_message_id(self, message_id: str) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM emails_sent WHERE message_id = ?",
@@ -403,7 +404,7 @@ class Database:
                 params,
             )
 
-    def get_conversation(self, prospect_id: int) -> dict | None:
+    def get_conversation(self, prospect_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM conversations WHERE prospect_id = ?",

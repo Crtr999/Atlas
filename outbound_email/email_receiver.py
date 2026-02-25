@@ -10,6 +10,7 @@ import re
 from email.header import decode_header
 from email.utils import parseaddr
 from datetime import datetime
+from typing import Optional
 
 from . import config
 
@@ -87,7 +88,7 @@ class EmailReceiver:
 
         return replies
 
-    def _fetch_and_parse(self, msg_id: bytes) -> dict | None:
+    def _fetch_and_parse(self, msg_id: bytes) -> Optional[dict]:
         """Fetch a single email by ID and parse it."""
         status, data = self._connection.fetch(msg_id, "(RFC822)")
         if status != "OK":
