@@ -53,8 +53,8 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
 CALENDLY_LINK = os.environ.get("CALENDLY_LINK", "")
 
 # ── Polling ───────────────────────────────────────────────────────
-# Check for replies every 10 minutes (600s) for fast response turnaround
-IMAP_POLL_INTERVAL = int(os.environ.get("IMAP_POLL_INTERVAL", "600"))  # seconds
+# Check for replies every 60 seconds
+IMAP_POLL_INTERVAL = int(os.environ.get("IMAP_POLL_INTERVAL", "60"))  # seconds
 
 # ── Company Info (for AI context) ─────────────────────────────────
 COMPANY_NAME = "Deed Street Capital"

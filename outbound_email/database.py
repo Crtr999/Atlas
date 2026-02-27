@@ -154,7 +154,9 @@ class Database:
         skipped = 0
         with open(csv_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
-            for row in reader:
+            for raw_row in reader:
+                # Normalize keys: lowercase + strip (handles "Email", "Name", etc.)
+                row = {k.strip().lower(): v for k, v in raw_row.items() if k}
                 email = row.get("email", "").strip()
                 if not email:
                     skipped += 1
