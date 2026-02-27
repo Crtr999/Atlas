@@ -22,9 +22,9 @@ INITIAL_OUTREACH_V1 = {
 <p>Would you be open to a brief call this week?</p>
 
 <p>Best,<br>
-{{sender_name}}<br>
 Deed Street Capital<br>
-{{sender_email}}</p>
+{{sender_email}}<br>
+Deedstreetcapital.com</p>
 </div>
 """,
 }
@@ -42,9 +42,9 @@ INITIAL_OUTREACH_V2 = {
 
 <p>Interested in getting a no-obligation quote? Just reply to this email and I'll walk you through how it works.</p>
 
-<p>{{sender_name}}<br>
-Deed Street Capital<br>
-{{sender_email}}</p>
+<p>Deed Street Capital<br>
+{{sender_email}}<br>
+Deedstreetcapital.com</p>
 </div>
 """,
 }
@@ -62,9 +62,9 @@ INITIAL_OUTREACH_V3 = {
 
 <p>If you've ever thought about cashing out your note, I'd be happy to provide a free, no-obligation quote. Just reply here and we can get started.</p>
 
-<p>{{sender_name}}<br>
-Deed Street Capital<br>
-{{sender_email}}</p>
+<p>Deed Street Capital<br>
+{{sender_email}}<br>
+Deedstreetcapital.com</p>
 </div>
 """,
 }
@@ -84,8 +84,9 @@ FOLLOW_UP_V1 = {
 
 <p>If this isn't relevant to you, no worries at all. Just let me know and I won't follow up again.</p>
 
-<p>{{sender_name}}<br>
-Deed Street Capital</p>
+<p>Deed Street Capital<br>
+{{sender_email}}<br>
+Deedstreetcapital.com</p>
 </div>
 """,
 }
@@ -102,8 +103,9 @@ FOLLOW_UP_V2 = {
 <p>If you ever decide to explore selling your note in the future, feel free to reach out. We buy notes of all sizes ($25K to $3M) in every state, and we're always here.</p>
 
 <p>All the best,<br>
-{{sender_name}}<br>
-Deed Street Capital</p>
+Deed Street Capital<br>
+{{sender_email}}<br>
+Deedstreetcapital.com</p>
 </div>
 """,
 }
@@ -138,7 +140,7 @@ def render_template(template: dict, prospect: dict,
     from . import config
 
     variables = {
-        "{{first_name}}": prospect.get("first_name", "there"),
+        "{{first_name}}": prospect.get("first_name") or "there",
         "{{last_name}}": prospect.get("last_name", ""),
         "{{company}}": prospect.get("company", ""),
         "{{email}}": prospect.get("email", ""),

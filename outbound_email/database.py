@@ -159,10 +159,22 @@ class Database:
                 if not email:
                     skipped += 1
                     continue
+
+                # Support a single "name" column by splitting into first/last.
+                first_name = row.get("first_name", "").strip()
+                last_name = row.get("last_name", "").strip()
+                if not first_name:
+                    full_name = row.get("name", "").strip()
+                    if full_name:
+                        parts = full_name.split(None, 1)
+                        first_name = parts[0]
+                        if not last_name and len(parts) > 1:
+                            last_name = parts[1]
+
                 pid = self.add_prospect(
                     email=email,
-                    first_name=row.get("first_name", ""),
-                    last_name=row.get("last_name", ""),
+                    first_name=first_name,
+                    last_name=last_name,
                     company=row.get("company", ""),
                     phone=row.get("phone", ""),
                     note_type=row.get("note_type", ""),
@@ -192,10 +204,23 @@ class Database:
             if not email or email == "nan":
                 skipped += 1
                 continue
+
+            # Support a single "name" column (e.g. "Tim Smith") by splitting
+            # into first/last when dedicated columns aren't present.
+            first_name = str(row.get("first_name", "") or "").strip()
+            last_name = str(row.get("last_name", "") or "").strip()
+            if not first_name:
+                full_name = str(row.get("name", "") or "").strip()
+                if full_name and full_name != "nan":
+                    parts = full_name.split(None, 1)
+                    first_name = parts[0]
+                    if not last_name and len(parts) > 1:
+                        last_name = parts[1]
+
             pid = self.add_prospect(
                 email=email,
-                first_name=str(row.get("first_name", "") or "").strip(),
-                last_name=str(row.get("last_name", "") or "").strip(),
+                first_name=first_name,
+                last_name=last_name,
                 company=str(row.get("company", "") or "").strip(),
                 phone=str(row.get("phone", "") or "").strip(),
                 note_type=str(row.get("note_type", "") or "").strip(),
@@ -340,6 +365,15 @@ class Database:
                  raw_message_id, in_reply_to),
             )
             return cursor.lastrowid
+
+    def get_received_email_by_message_id(self, message_id: str) -> Optional[dict]:
+        """Return an already-logged received email by its raw Message-ID, or None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM emails_received WHERE raw_message_id = ?",
+                (message_id,),
+            ).fetchone()
+            return dict(row) if row else None
 
     def get_unprocessed_replies(self) -> list:
         with self._connect() as conn:

@@ -9,7 +9,7 @@ import logging
 import re
 from email.header import decode_header
 from email.utils import parseaddr
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from . import config
@@ -53,28 +53,50 @@ class EmailReceiver:
 
     def fetch_new_replies(self) -> list:
         """
-        Fetch unread emails from the inbox that are replies to our outreach.
-        Returns list of parsed email dicts.
+        Fetch emails from the inbox that are replies to our outreach.
+        Searches both unread messages AND all messages from the last 7 days so
+        that replies which were already opened in Gmail are not missed.
+        Returns list of parsed email dicts (deduplicated by Message-ID).
         """
         if not self._connection:
             self.connect()
 
         replies = []
+        seen_message_ids = set()
+
         try:
             self._connection.select(config.IMAP_FOLDER)
 
-            # Search for unseen messages
-            status, message_ids = self._connection.search(None, "UNSEEN")
-            if status != "OK" or not message_ids[0]:
+            # Build a SINCE date string for the last 7 days (IMAP format: DD-Mon-YYYY)
+            since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+
+            # Collect IDs from two searches and deduplicate
+            all_ids = set()
+
+            # 1) Unseen (catches brand-new replies)
+            status, data = self._connection.search(None, "UNSEEN")
+            if status == "OK" and data[0]:
+                all_ids.update(data[0].split())
+
+            # 2) All mail in the last 7 days (catches replies already opened in Gmail)
+            status, data = self._connection.search(None, f'SINCE "{since_date}"')
+            if status == "OK" and data[0]:
+                all_ids.update(data[0].split())
+
+            if not all_ids:
                 return replies
 
-            ids = message_ids[0].split()
-            logger.info(f"Found {len(ids)} unread emails")
+            ids = list(all_ids)
+            logger.info(f"Found {len(ids)} emails to check (UNSEEN + last 7 days)")
 
             for msg_id in ids:
                 try:
                     parsed = self._fetch_and_parse(msg_id)
                     if parsed:
+                        mid = parsed.get("message_id", "")
+                        if mid and mid in seen_message_ids:
+                            continue
+                        seen_message_ids.add(mid)
                         replies.append(parsed)
                 except Exception as e:
                     logger.error(f"Error parsing message {msg_id}: {e}")
@@ -195,6 +217,11 @@ class EmailReceiver:
 
             if not is_reply:
                 logger.info(f"Email from {from_email} doesn't match any outreach — skipping")
+                continue
+
+            # Skip if we've already logged this exact message
+            if reply["message_id"] and self.db.get_received_email_by_message_id(reply["message_id"]):
+                logger.info(f"Reply from {from_email} already logged — skipping duplicate")
                 continue
 
             # Log in database
