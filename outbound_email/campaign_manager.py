@@ -45,9 +45,11 @@ class CampaignManager:
 
     # ── Campaign Sending ──────────────────────────────────────────
 
-    def send_campaign(self, campaign_id: int, limit: int = None) -> dict:
+    def send_campaign(self, campaign_id: int, limit: int = None,
+                      force: bool = False) -> dict:
         """
         Send a campaign to unsent prospects.
+        force=True re-sends to prospects already contacted (e.g. after a bad import).
         Returns summary of results.
         """
         campaign = self.db.get_campaign(campaign_id)
@@ -62,10 +64,16 @@ class CampaignManager:
             return {"error": "Daily send limit reached", "sent": 0}
 
         batch_size = min(remaining, limit) if limit else remaining
-        prospects = self.db.get_unsent_prospects(campaign_id, limit=batch_size)
+        prospects = self.db.get_unsent_prospects(campaign_id, limit=batch_size,
+                                                 force=force)
 
         if not prospects:
-            return {"sent": 0, "message": "No unsent prospects for this campaign"}
+            return {"sent": 0, "error": "no_unsent",
+                    "message": (
+                        "No prospects found to send to.\n"
+                        "  These prospects may have already been contacted for this campaign.\n"
+                        "  To re-send, run:  python3 -m outbound_email send <id> --force"
+                    )}
 
         logger.info(
             f"Sending campaign '{campaign['name']}' to {len(prospects)} prospects "

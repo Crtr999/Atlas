@@ -203,7 +203,12 @@ def cmd_send(args):
             return 0
 
     print(f"Sending...")
-    result = mgr.send_campaign(args.campaign_id, limit=limit)
+    result = mgr.send_campaign(args.campaign_id, limit=limit,
+                               force=getattr(args, "force", False))
+
+    if result.get("error") == "no_unsent":
+        print(result["message"])
+        return 0
 
     if "error" in result:
         print(f"Error: {result['error']}")
@@ -340,6 +345,8 @@ def main():
     p_send.add_argument("campaign_id", type=int, help="Campaign ID")
     p_send.add_argument("--limit", type=int, help="Max emails to send")
     p_send.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
+    p_send.add_argument("--force", action="store_true",
+                        help="Re-send even to prospects already contacted (use after bad import)")
 
     # check-replies
     subparsers.add_parser("check-replies", help="Check for and process replies")

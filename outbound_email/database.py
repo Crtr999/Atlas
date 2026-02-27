@@ -140,11 +140,8 @@ class Database:
                  note_type, note_balance, property_state, source, tags),
             )
             if cursor.rowcount == 0:
-                row = conn.execute(
-                    "SELECT id FROM prospects WHERE email = ?",
-                    (email.lower().strip(),),
-                ).fetchone()
-                return row["id"]
+                # Already exists — return None so callers can distinguish new vs existing
+                return None
             return cursor.lastrowid
 
     def import_prospects_csv(self, csv_path: str) -> dict:
@@ -237,20 +234,34 @@ class Database:
                 skipped += 1
         return {"added": added, "skipped": skipped}
 
-    def get_unsent_prospects(self, campaign_id: int, limit: int = 500) -> list:
-        """Get prospects who haven't been emailed for a given campaign."""
+    def get_unsent_prospects(self, campaign_id: int, limit: int = 500,
+                             force: bool = False) -> list:
+        """
+        Get prospects eligible to receive a campaign email.
+        force=True skips the already-sent check (useful for re-sending after
+        a bad import or bounce).
+        """
         with self._connect() as conn:
-            rows = conn.execute(
-                """SELECT p.* FROM prospects p
-                   WHERE p.status NOT IN ('opted_out', 'bounced')
-                   AND p.id NOT IN (
-                       SELECT prospect_id FROM emails_sent
-                       WHERE campaign_id = ? AND is_auto_reply = 0
-                   )
-                   ORDER BY p.created_at ASC
-                   LIMIT ?""",
-                (campaign_id, limit),
-            ).fetchall()
+            if force:
+                rows = conn.execute(
+                    """SELECT p.* FROM prospects p
+                       WHERE p.status NOT IN ('opted_out')
+                       ORDER BY p.created_at ASC
+                       LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT p.* FROM prospects p
+                       WHERE p.status NOT IN ('opted_out', 'bounced')
+                       AND p.id NOT IN (
+                           SELECT prospect_id FROM emails_sent
+                           WHERE campaign_id = ? AND is_auto_reply = 0
+                       )
+                       ORDER BY p.created_at ASC
+                       LIMIT ?""",
+                    (campaign_id, limit),
+                ).fetchall()
             return [dict(r) for r in rows]
 
     def get_prospect_by_email(self, email: str) -> Optional[dict]:
